@@ -86,7 +86,9 @@
 }
 
 - (void)handleTapGesture:(__unused UITapGestureRecognizer *)sender {
-    [self.mapView resetNorth];
+    if (self.mapView.isRotateEnabled) {
+        [self.mapView resetNorth];
+    }
 }
 
 - (void)updateCompass {

@@ -76,6 +76,10 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (BOOL)mapView:(MLNMapView *)mapView shouldChangeFromCamera:(MLNMapCamera *)oldCamera toCamera:(MLNMapCamera *)newCamera reason:(MLNCameraChangeReason)reason;
 
+- (CLLocationCoordinate2D)mapView:(MLNMapView *)mapView oldCoordinate:(CLLocationCoordinate2D)oldCoordinate limitPanCoordinate:(CLLocationCoordinate2D)panCoordinate;
+
+- (CLLocationDirection)northDirectionForMapView:(MLNMapView *)mapView;
+
 /**
  Tells the delegate that the viewpoint depicted by the map view is about to change.
 

@@ -2109,6 +2109,12 @@ public:
 
         if ([self _shouldChangeFromCamera:oldCamera toCamera:toCamera])
         {
+            if ([self.delegate respondsToSelector:@selector(mapView:oldCoordinate:limitPanCoordinate:)]) {
+                 CLLocationCoordinate2D panToCoordinate = toCamera.centerCoordinate;
+                 panToCoordinate = [self.delegate mapView:self oldCoordinate:oldCamera.centerCoordinate limitPanCoordinate:panToCoordinate];
+                 delta = [self panTranslationFromCoordinate:oldCamera.centerCoordinate toCoordinate:panToCoordinate panGesture:pan];
+             }
+
             switch(self.panScrollingMode){
                case MLNPanScrollingModeVertical:
                   self.mbglMap.moveBy({ 0, delta.y });
@@ -2142,6 +2148,12 @@ public:
 
             if ([self _shouldChangeFromCamera:oldCamera toCamera:toCamera])
             {
+                if ([self.delegate respondsToSelector:@selector(mapView:oldCoordinate:limitPanCoordinate:)]) {
+                    CLLocationCoordinate2D panToCoordinate = toCamera.centerCoordinate;
+                    panToCoordinate = [self.delegate mapView:self oldCoordinate:oldCamera.centerCoordinate limitPanCoordinate:panToCoordinate];
+                    offset = [self panTranslationFromCoordinate:oldCamera.centerCoordinate toCoordinate:panToCoordinate panGesture:pan];
+                }
+
                 switch(self.panScrollingMode){
                    case MLNPanScrollingModeVertical:
                       self.mbglMap.moveBy({ 0, offset.y }, MLNDurationFromTimeInterval(self.decelerationRate));
@@ -2338,14 +2350,20 @@ public:
         // Trigger a light haptic feedback event when the user rotates to due north.
         if (@available(iOS 10.0, *))
         {
-            if (self.isHapticFeedbackEnabled && fabs(newDegrees) <= 1 && self.shouldTriggerHapticFeedbackForCompass)
+            CLLocationDirection north = 0;
+            if ([self.delegate respondsToSelector:@selector(northDirectionForMapView:)]) {
+                north = [self.delegate northDirectionForMapView:self];
+            }
+            CLLocationDirection degreesFromNorth = fabs(north - self.direction);
+
+            if (self.isHapticFeedbackEnabled && degreesFromNorth <= 1 && self.shouldTriggerHapticFeedbackForCompass)
             {
                 UIImpactFeedbackGenerator *hapticFeedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
                 [hapticFeedback impactOccurred];
 
                 self.shouldTriggerHapticFeedbackForCompass = NO;
             }
-            else if (fabs(newDegrees) > 1)
+            else if (degreesFromNorth > 1)
             {
                 self.shouldTriggerHapticFeedbackForCompass = YES;
             }
@@ -2672,11 +2690,21 @@ public:
 
 }
 
+// what pan translation do we need to move from one camera to t'other?
+- (CGPoint)panTranslationFromCoordinate:(CLLocationCoordinate2D)oldCoordinate toCoordinate:(CLLocationCoordinate2D)newCoordinate panGesture:(UIPanGestureRecognizer *)pan
+{
+    // this is the current centerpoint on screen
+    CGPoint currentCenterPoint = [self convertCoordinate:oldCoordinate toPointToView:pan.view];
+    // this will be the new centerpoint on screen
+    CGPoint newCenterPoint = [self convertCoordinate:newCoordinate toPointToView:pan.view];
+    return CGPointMake(currentCenterPoint.x - newCenterPoint.x, currentCenterPoint.y - newCenterPoint.y);
+}
+
 - (MLNMapCamera *)cameraByPanningWithTranslation:(CGPoint)endPoint panGesture:(UIPanGestureRecognizer *)pan
 {
     MLNMapCamera *panCamera = [self.camera copy];
     
-    CGPoint centerPoint = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    CGPoint centerPoint = self.contentCenter;
     CGPoint endCameraPoint = CGPointMake(centerPoint.x - endPoint.x, centerPoint.y - endPoint.y);
     CLLocationCoordinate2D panCoordinate = [self convertPoint:endCameraPoint toCoordinateFromView:pan.view];
     
@@ -3053,7 +3081,11 @@ static void *windowScreenContext = &windowScreenContext;
 {
     self.cameraChangeReasonBitmask |= MLNCameraChangeReasonResetNorth;
 
-    [self setDirection:0 animated:animated];
+    CLLocationDirection north = 0;
+    if ([self.delegate respondsToSelector:@selector(northDirectionForMapView:)]) {
+        north = [self.delegate northDirectionForMapView:self];
+    }
+    [self setDirection:north animated:animated];
 }
 
 - (void)resetPosition
@@ -6592,17 +6624,23 @@ static void *windowScreenContext = &windowScreenContext;
 
 - (void)unrotateIfNeededForGesture
 {
+    CLLocationDirection north = 0;
+    if ([self.delegate respondsToSelector:@selector(northDirectionForMapView:)]) {
+        north = [self.delegate northDirectionForMapView:self];
+    }
+
     // Avoid contention with in-progress gestures.
     UIGestureRecognizerState state = self.pinch.state;
-    if (self.direction != 0
+    if (self.direction != north
         && state != UIGestureRecognizerStateBegan
         && state != UIGestureRecognizerStateChanged)
     {
         [self unrotateIfNeededAnimated:YES];
 
+        CLLocationDirection degreesFromNorth = fabs(north - self.direction);
+
         // Snap to north.
-        if ((self.direction < MLNToleranceForSnappingToNorth
-             || self.direction > 360 - MLNToleranceForSnappingToNorth)
+        if (degreesFromNorth < MLNToleranceForSnappingToNorth
             && self.userTrackingMode != MLNUserTrackingModeFollowWithHeading
             && self.userTrackingMode != MLNUserTrackingModeFollowWithCourse)
         {
@@ -6614,7 +6652,12 @@ static void *windowScreenContext = &windowScreenContext;
 /// Rotate back to true north if the map view is zoomed too far out.
 - (void)unrotateIfNeededAnimated:(BOOL)animated
 {
-    if (self.direction != 0 && ! self.isRotationAllowed
+    CLLocationDirection north = 0;
+    if ([self.delegate respondsToSelector:@selector(northDirectionForMapView:)]) {
+        north = [self.delegate northDirectionForMapView:self];
+    }
+
+    if (self.direction != north && ! self.isRotationAllowed
         && self.userTrackingState != MLNUserTrackingStateBegan)
     {
         if (animated)
